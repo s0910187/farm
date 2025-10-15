@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Header } from './components/Header';
 import { VendorList } from './components/VendorList';
 import { TransferForm } from './components/TransferForm';
@@ -8,7 +8,29 @@ import { searchVendorsOnline, addVendorOnline, updateMainDataInCloud } from './s
 
 const App: React.FC = () => {
   const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [transferList, setTransferList] = useState<TransferItem[]>([]);
+  const [transferList, setTransferList] = useState<TransferItem[]>(() => {
+    try {
+      // Detect hard reload and clear previous session data for a fresh list
+      const nav = (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined);
+      const isReload = nav?.type === 'reload';
+      if (isReload) {
+        try { sessionStorage.removeItem('transferList'); } catch {}
+        return [];
+      }
+
+      const stored = sessionStorage.getItem('transferList');
+      if (!stored) return [];
+      const parsed = JSON.parse(stored) as TransferItem[];
+      return parsed.map(item => ({
+        ...item,
+        amountPayable: Number(item.amountPayable) || 0,
+        manualFee: Number(item.manualFee) || 0,
+        actualAmount: Number(item.actualAmount) || 0,
+      }));
+    } catch {
+      return [];
+    }
+  });
   const [isAddVendorModalOpen, setIsAddVendorModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -19,6 +41,15 @@ const App: React.FC = () => {
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
   const transferVendorIds = useMemo(() => new Set(transferList.map(v => v.id)), [transferList]);
+
+  // Persist transfer list to sessionStorage (cleared when the tab/session ends)
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('transferList', JSON.stringify(transferList));
+    } catch {
+      // ignore write errors
+    }
+  }, [transferList]);
 
   const handleSearch = async (term: string) => {
     setSearchTerm(term); // Keep search term in input
